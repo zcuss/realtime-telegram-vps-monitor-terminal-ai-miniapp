@@ -6,7 +6,8 @@ import dotenv from 'dotenv';
 import si from 'systeminformation';
 
 dotenv.config();
-const app = Fastify({ logger: true });
+const DEBUG = String(process.env.DEBUG || 'false').toLowerCase() === 'true';
+const app = Fastify({ logger: DEBUG });
 const execFileAsync = promisify(execFile);
 const PASS = process.env.NODE_PASSWORD || process.env.DASHBOARD_PASSWORD || 'change-me';
 const HOST = process.env.NODE_HOST || process.env.HOST || '0.0.0.0';

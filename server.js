@@ -17,8 +17,9 @@ import si from 'systeminformation';
 dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const DEBUG = String(process.env.DEBUG || 'false').toLowerCase() === 'true';
 
-const app = Fastify({ logger: true });
+const app = Fastify({ logger: DEBUG });
 const execFileAsync = promisify(execFile);
 await app.register(websocket);
 await app.register(formbody);
