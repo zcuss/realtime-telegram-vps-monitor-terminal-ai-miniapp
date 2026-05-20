@@ -47,7 +47,21 @@ function parseTargets() {
 }
 const TARGETS = parseTargets();
 
-function unauthorized(reply) { return reply.code(401).send('Unauthorized'); }
+function unauthorized(reply) {
+  return reply.header('WWW-Authenticate', 'Basic realm="vps-monitor"').code(401).send('Unauthorized');
+}
+
+function basicAuthOk(req) {
+  const raw = req.headers.authorization || '';
+  if (!raw.startsWith('Basic ')) return false;
+  try {
+    const decoded = Buffer.from(raw.slice(6), 'base64').toString('utf8');
+    const idx = decoded.indexOf(':');
+    return idx >= 0 && decoded.slice(idx + 1) === PASSWORD;
+  } catch {
+    return false;
+  }
+}
 
 function verifyTelegramInitData(initData) {
   if (!TG_TOKEN || !initData) return false;
@@ -70,6 +84,7 @@ function verifyTelegramInitData(initData) {
 
 function auth(req) {
   if (PASSWORD === 'change-me' || !PASSWORD) return false;
+  if (basicAuthOk(req)) return true;
   const h = req.headers['x-dashboard-password'];
   if (h && h === PASSWORD) return true;
   const cookie = req.headers.cookie || '';
