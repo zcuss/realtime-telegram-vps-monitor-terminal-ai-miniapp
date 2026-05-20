@@ -131,28 +131,35 @@ function auth(req) {
 }
 
 function wsAuth(req) {
-  const pinOk = !TERMINAL_PIN || req.query?.pin === TERMINAL_PIN;
-  if (!pinOk) return false;
   if (verifyTelegramInitData(String(req.query?.tg || ''))) return true;
-  return TERMINAL_PASSWORD_FALLBACK && PASSWORD && req.query?.pw === PASSWORD;
+  if (TERMINAL_PASSWORD_FALLBACK && PASSWORD && req.query?.pw === PASSWORD) return true;
+  return !!TERMINAL_PIN && req.query?.pin === TERMINAL_PIN;
 }
 
 async function localMetrics() {
   const [load, mem, fsSize, cpu, procs] = await Promise.all([
     si.currentLoad(), si.mem(), si.fsSize(), si.cpu(), si.processes()
   ]);
-  const disk = fsSize[0] || { size: 1, used: 0, available: 0 };
-  const rp = +(mem.used / mem.total * 100).toFixed(1);
+  const cores = os.cpus().length || cpu.cores || 1;
+  const [load1, load5, load15] = os.loadavg();
+  const disk = fsSize.find(d => d.mount === '/') || fsSize.find(d => d.mount?.startsWith('/')) || fsSize[0] || { size: 1, used: 0, available: 0 };
+  const usedMem = Math.max(0, mem.total - mem.available);
+  const rp = +(usedMem / mem.total * 100).toFixed(1);
   const dp = +(disk.used / disk.size * 100).toFixed(1);
   const cp = +load.currentLoad.toFixed(1);
-  const lpc = +(load.avgLoad / (cpu.cores || 1)).toFixed(2);
+  const lpc = +(load1 / cores).toFixed(2);
+  const top = procs.list
+    .filter(p => (p.pcpu || p.pmem || 0) > 0 && !String(p.name || p.command || '').startsWith('kworker'))
+    .sort((a, b) => (b.pcpu || 0) - (a.pcpu || 0))
+    .slice(0, 8)
+    .map(p => ({ pid: String(p.pid), cpu: Number(p.pcpu || 0).toFixed(1), mem: Number(p.pmem || 0).toFixed(1), cmd: p.command || p.name || 'proc' }));
   return {
     ts: Math.floor(Date.now()/1000), host: os.hostname(), uptime_sec: os.uptime(), uptime: `${Math.floor(os.uptime()/86400)}d ${Math.floor((os.uptime()%86400)/3600)}h ${Math.floor((os.uptime()%3600)/60)}m`,
-    health: { level: rp>=90||dp>=90?'danger':(rp>=75||dp>=75||lpc>=2?'warn':'ok'), label: rp>=90||dp>=90?'CRITICAL':(rp>=75||dp>=75||lpc>=2?'ATTENTION':'HEALTHY'), alerts: [] },
-    cpu: { pct: cp, cores: cpu.cores || 1, load1: +load.avgLoad.toFixed(2), load5: +load.avgLoad.toFixed(2), load15: +load.avgLoad.toFixed(2), load_per_core: lpc },
-    ram: { total_gb: +(mem.total/1e9).toFixed(2), used_gb: +(mem.used/1e9).toFixed(2), avail_gb: +(mem.available/1e9).toFixed(2), pct: rp },
+    health: { level: rp>=90||dp>=90?'danger':(rp>=75||dp>=75||lpc>=1.5?'warn':'ok'), label: rp>=90||dp>=90?'CRITICAL':(rp>=75||dp>=75||lpc>=1.5?'ATTENTION':'HEALTHY'), alerts: [] },
+    cpu: { pct: cp, cores, load1: +load1.toFixed(2), load5: +load5.toFixed(2), load15: +load15.toFixed(2), load_per_core: lpc },
+    ram: { total_gb: +(mem.total/1e9).toFixed(2), used_gb: +(usedMem/1e9).toFixed(2), avail_gb: +(mem.available/1e9).toFixed(2), pct: rp },
     disk: { total_gb: +(disk.size/1e9).toFixed(2), used_gb: +(disk.used/1e9).toFixed(2), free_gb: +(disk.available/1e9).toFixed(2), pct: dp },
-    top: procs.list.slice(0,8).map(p=>({pid:String(p.pid),cpu:String(p.pcpu||0),mem:String(p.pmem||0),cmd:p.name||p.command||'proc'})), services: []
+    top, services: []
   };
 }
 
