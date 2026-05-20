@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Telegram VPS Monitor Mini App — one-command installer
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/adryndian/realtime-telegram-vps-monitor-terminal-ai-miniapp/main/scripts/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/zcuss/realtime-telegram-vps-monitor-terminal-ai-miniapp/Main/scripts/install.sh | bash
 #
 # Run as the user that will own the service (NOT root).
 # Tested on: Ubuntu 22.04 / 24.04, Debian 12
@@ -11,7 +11,7 @@ set -euo pipefail
 # ────────────────────────────────────────────────────────────
 # Config
 # ────────────────────────────────────────────────────────────
-REPO_URL="https://github.com/adryndian/realtime-telegram-vps-monitor-terminal-ai-miniapp.git"
+REPO_URL="https://github.com/zcuss/realtime-telegram-vps-monitor-terminal-ai-miniapp.git"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/telegram-vps-monitor-terminal-ai-miniapp}"
 SERVICE_NAME="telegram-vps-monitor"
 DEFAULT_PORT="${PORT:-8787}"
@@ -99,7 +99,7 @@ step "Fetching code"
 
 if [[ -d "$INSTALL_DIR/.git" ]]; then
   ok "Repo already exists at $INSTALL_DIR — pulling latest"
-  (cd "$INSTALL_DIR" && git pull --ff-only origin main >/dev/null)
+  (cd "$INSTALL_DIR" && git pull --ff-only origin Main >/dev/null)
 else
   if [[ -e "$INSTALL_DIR" ]]; then
     err "$INSTALL_DIR exists but is not a git repo. Move it aside and retry."
