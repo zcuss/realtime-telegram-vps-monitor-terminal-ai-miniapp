@@ -8,7 +8,7 @@ import formbody from '@fastify/formbody';
 import fastifyStatic from '@fastify/static';
 import fastifyView from '@fastify/view';
 import dotenv from 'dotenv';
-import eta from 'eta';
+import * as eta from 'eta';
 import axios from 'axios';
 import pty from 'node-pty';
 import si from 'systeminformation';
