@@ -306,11 +306,13 @@ app.get('/:vpsId', async (req, reply) => {
 
 app.get('/api/vps', async (req, reply) => {
   if (!auth(req, reply)) return unauthorized(reply);
+  reply.header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   return TARGETS.map(t => ({ id: t.id, name: t.name, type: t.type }));
 });
 
 app.get('/api/metrics', async (req, reply) => {
   if (!auth(req, reply)) return unauthorized(reply);
+  reply.header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   const vps = req.query?.vps || 'local';
   const t = TARGETS.find(x => x.id === vps);
   if (!t) return reply.code(404).send({ error: 'vps_not_found' });
@@ -320,7 +322,11 @@ app.get('/api/metrics', async (req, reply) => {
     return data;
   }
   try {
-    const res = await axios.get(`${t.url}/api/metrics`, { headers: { 'X-Dashboard-Password': t.password || '' }, timeout: 5000 });
+    const res = await axios.get(`${t.url}/api/metrics`, {
+      headers: { 'X-Dashboard-Password': t.password || '', 'Cache-Control': 'no-cache' },
+      params: { _: Date.now() },
+      timeout: 5000,
+    });
     sendTelegramAlert(t.name, res.data).catch(err => app.log.warn(`alert failed: ${err.message}`));
     return res.data;
   } catch (e) {

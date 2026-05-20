@@ -49,9 +49,13 @@ async function serviceStatus() {
   return out;
 }
 
-app.get('/health', async ()=>({ok:true,host:os.hostname(),ts:Math.floor(Date.now()/1000)}));
+app.get('/health', async (_req, reply)=>{
+  reply.header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  return {ok:true,host:os.hostname(),ts:Math.floor(Date.now()/1000)};
+});
 app.get('/api/metrics', async (req, reply)=>{
   if(!auth(req)) return reply.code(401).send('Unauthorized');
+  reply.header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   const [load, mem, fsSize, cpu, procs] = await Promise.all([si.currentLoad(), si.mem(), si.fsSize(), si.cpu(), si.processes()]);
   const cores = os.cpus().length || cpu.cores || 1;
   const [load1, load5, load15] = os.loadavg();

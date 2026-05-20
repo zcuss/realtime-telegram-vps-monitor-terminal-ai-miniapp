@@ -172,7 +172,8 @@ async function loadVpsList(){
 
 async function load(){
   try{
-    let r=await fetch(`/api/metrics?vps=${encodeURIComponent(CURRENT_VPS)}`,{headers:{'X-Telegram-Init-Data':TELEGRAM_INIT_DATA}});
+    const url = `/api/metrics?vps=${encodeURIComponent(CURRENT_VPS)}&_=${Date.now()}`;
+    let r=await fetch(url,{cache:'no-store',headers:{'X-Telegram-Init-Data':TELEGRAM_INIT_DATA,'Cache-Control':'no-cache'}});
     if(r.status===401){
       $('health').textContent='AUTH FAILED';$('health').className='status danger';
       return;
