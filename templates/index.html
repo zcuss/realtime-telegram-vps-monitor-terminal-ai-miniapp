@@ -36,6 +36,8 @@
     <div id="health" class="status">CHECK</div>
   </div>
 
+  <div id="vpsTabs" class="vpsTabs"></div>
+
   <section class="hero">
     <div class="heroHead">
       <div>
@@ -147,11 +149,24 @@ function openTerm(mode){
   }
 }
 
+function setCurrentVps(id, push=true){
+  CURRENT_VPS = id || 'local';
+  const nextPath = CURRENT_VPS === 'local' ? '/' : `/${encodeURIComponent(CURRENT_VPS)}`;
+  if(push && location.pathname !== nextPath) history.pushState(null, '', nextPath);
+  renderVpsSelect();
+  load();
+}
+
 function renderVpsSelect(){
   const sel = $('vpsSelect');
-  if(!sel) return;
-  sel.innerHTML = VPS_LIST.map(v => `<option value="${v.id}">${v.name}</option>`).join('');
-  sel.value = CURRENT_VPS;
+  if(sel){
+    sel.innerHTML = VPS_LIST.map(v => `<option value="${v.id}">${v.name}</option>`).join('');
+    sel.value = CURRENT_VPS;
+  }
+  const tabs = $('vpsTabs');
+  if(tabs){
+    tabs.innerHTML = VPS_LIST.map(v => `<button type="button" class="vpsTab ${v.id===CURRENT_VPS?'active':''}" onclick="setCurrentVps('${v.id.replace(/'/g,'\\&#39;')}')"><b>${v.name}</b><span>${v.type}</span></button>`).join('');
+  }
 }
 
 async function loadVpsList(){
@@ -231,12 +246,7 @@ async function load(){
 
 const vpsSelect = $('vpsSelect');
 if(vpsSelect){
-  vpsSelect.addEventListener('change', ()=>{
-    CURRENT_VPS = vpsSelect.value || 'local';
-    const nextPath = CURRENT_VPS === 'local' ? '/' : `/${encodeURIComponent(CURRENT_VPS)}`;
-    if(location.pathname !== nextPath) history.pushState(null, '', nextPath);
-    load();
-  });
+  vpsSelect.addEventListener('change', ()=>setCurrentVps(vpsSelect.value || 'local'));
 }
 window.addEventListener('popstate', ()=>{
   CURRENT_VPS=decodeURIComponent(location.pathname.replace(/^\//,'')||'local');

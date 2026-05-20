@@ -157,6 +157,25 @@ body::after{
 .status.warn{color:var(--warn);border-color:rgba(255,198,88,.35);background:rgba(40,30,15,.55)}
 .status.danger{color:var(--danger);border-color:rgba(255,94,122,.4);background:rgba(45,15,25,.6)}
 
+.vpsTabs{
+  display:grid;
+  grid-template-columns:repeat(2,1fr);
+  gap:8px;
+  margin:-6px 0 12px;
+}
+.vpsTab{
+  border:1px solid var(--line);
+  background:rgba(20,28,46,.55);
+  color:var(--text-2);
+  border-radius:14px;
+  padding:10px 12px;
+  text-align:left;
+  cursor:pointer;
+}
+.vpsTab b{display:block;color:var(--text);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vpsTab span{display:block;margin-top:2px;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.08em}
+.vpsTab.active{border-color:rgba(123,169,255,.55);background:rgba(45,70,120,.45);box-shadow:0 0 0 1px rgba(123,169,255,.12) inset}
+
 @keyframes pulse{
   0%,100%{opacity:1;transform:scale(1)}
   50%{opacity:.5;transform:scale(.85)}
