@@ -3,6 +3,7 @@ from functools import wraps
 from flask import Flask, jsonify, render_template, request, Response
 from flask_sock import Sock
 import pty, select, fcntl, termios, struct, signal
+from urllib.request import Request, urlopen
 
 app = Flask(__name__)
 sock = Sock(app)
@@ -11,6 +12,40 @@ REFRESH_SECONDS = int(os.getenv('REFRESH_SECONDS', '5'))
 ALLOWED_TG_USER_ID = os.getenv('ALLOWED_TG_USER_ID', '')
 TERMINAL_PIN = os.getenv('TERMINAL_PIN', '')
 TERMINAL_PASSWORD_FALLBACK = os.getenv('TERMINAL_PASSWORD_FALLBACK', 'false').lower() == 'true'
+
+
+def parse_vps_targets():
+    raw = os.getenv('VPS_TARGETS', '').strip()
+    targets = [{'id': 'local', 'name': os.getenv('VPS_LOCAL_NAME', 'Local VPS'), 'type': 'local'}]
+    if not raw:
+        return targets
+    try:
+        arr = json.loads(raw)
+        if isinstance(arr, list):
+            for i, item in enumerate(arr, start=1):
+                if not isinstance(item, dict):
+                    continue
+                vid = str(item.get('id') or f'vps{i}').strip()
+                name = str(item.get('name') or vid).strip()
+                url = str(item.get('url') or '').strip().rstrip('/')
+                password = str(item.get('password') or '')
+                if not vid or not url:
+                    continue
+                targets.append({'id': vid, 'name': name, 'type': 'remote', 'url': url, 'password': password})
+    except Exception as e:
+        print(f"[VPS] Invalid VPS_TARGETS: {e}")
+    return targets
+
+
+VPS_TARGETS = parse_vps_targets()
+
+
+def find_vps_target(vps_id):
+    for t in VPS_TARGETS:
+        if t.get('id') == vps_id:
+            return t
+    return None
+
 
 def telegram_token():
     return os.getenv('TELEGRAM_BOT_TOKEN', '')
@@ -162,9 +197,41 @@ def index_redirect():
 @app.route('/debug')
 def debug(): return render_template('debug.html')
 
+def fetch_remote_metrics(target):
+    headers = {'Accept': 'application/json'}
+    pw = target.get('password', '')
+    if pw:
+        headers['X-Dashboard-Password'] = pw
+    req = Request(f"{target['url']}/api/metrics", headers=headers)
+    with urlopen(req, timeout=5) as resp:
+        body = resp.read().decode('utf-8')
+        return json.loads(body)
+
+
+@app.route('/api/vps')
+@require_auth
+def api_vps():
+    return jsonify([
+        {'id': t['id'], 'name': t['name'], 'type': t['type']}
+        for t in VPS_TARGETS
+    ])
+
+
 @app.route('/api/metrics')
 @require_auth
-def api_metrics(): return jsonify(metrics())
+def api_metrics():
+    vps_id = request.args.get('vps', 'local')
+    target = find_vps_target(vps_id)
+    if not target:
+        return jsonify({'error': 'vps_not_found'}), 404
+    if target.get('type') == 'local':
+        return jsonify(metrics())
+    try:
+        data = fetch_remote_metrics(target)
+        data['_target'] = {'id': target['id'], 'name': target['name'], 'type': 'remote'}
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({'error': 'remote_unreachable', 'detail': str(e)[:180], '_target': {'id': target['id'], 'name': target['name']}}), 502
 
 @app.route('/login', methods=['POST'])
 def login():

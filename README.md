@@ -53,6 +53,41 @@ This app puts that whole workflow behind a single Telegram Mini App button.
 
 ---
 
+## Multi VPS mode (Main + Nodes)
+
+Recommended architecture:
+
+- **Main VPS**: run full dashboard (`app.py`)
+- **Node VPS**: run lightweight metrics agent (`node_agent.py`)
+
+Main VPS `.env` example (single line JSON):
+
+```env
+VPS_LOCAL_NAME=Main VPS
+VPS_TARGETS=[{"id":"node1","name":"Node 1","url":"http://IP_NODE_1:8788","password":"nodepass1"},{"id":"node2","name":"Node 2","url":"http://IP_NODE_2:8788","password":"nodepass2"}]
+```
+
+Node VPS `.env` minimum:
+
+```env
+NODE_PASSWORD=nodepass1
+NODE_HOST=0.0.0.0
+NODE_PORT=8788
+ALERT_RAM_PCT=85
+ALERT_DISK_PCT=85
+ALERT_LOAD_PER_CORE=2.0
+```
+
+Run node agent on remote VPS:
+
+```bash
+python node_agent.py
+```
+
+Main dashboard fetches each node via `GET /api/metrics` with header `X-Dashboard-Password`.
+
+---
+
 ## Stack
 
 - Python 3.10+ Flask
