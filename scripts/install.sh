@@ -77,7 +77,12 @@ require_cmd() {
 step "Pre-flight checks"
 
 if [[ "$EUID" -eq 0 ]]; then
-  err "Don't run as root. Use a normal user (e.g. ubuntu) — sudo will be requested when needed."
+  SUDO=""
+  RUN_USER="root"
+  warn "Running as root"
+else
+  SUDO="sudo"
+  RUN_USER="$USER"
 fi
 
 require_cmd git
@@ -95,11 +100,15 @@ ok "Python $PYV"
 
 if ! python3 -c 'import venv' 2>/dev/null; then
   warn "python3-venv missing, installing..."
-  sudo apt-get update -qq && sudo apt-get install -y python3-venv >/dev/null
+  if [[ -n "$SUDO" ]]; then
+    $SUDO apt-get update -qq && $SUDO apt-get install -y python3-venv >/dev/null
+  else
+    apt-get update -qq && apt-get install -y python3-venv >/dev/null
+  fi
 fi
 ok "python3-venv available"
 
-if ! sudo -n true 2>/dev/null; then
+if [[ -n "$SUDO" ]] && ! $SUDO -n true 2>/dev/null; then
   warn "sudo will prompt for password during systemd setup"
 fi
 
@@ -240,14 +249,15 @@ else
   EXEC_START="$GUNICORN_BIN -k gthread --threads 8 -b ${ENV_HOST}:${ENV_PORT} app:app"
 fi
 
-sudo tee "$SERVICE_FILE" >/dev/null <<EOF
+if [[ -n "$SUDO" ]]; then
+  $SUDO tee "$SERVICE_FILE" >/dev/null <<EOF
 [Unit]
 Description=$SERVICE_DESC
 After=network.target
 
 [Service]
 Type=simple
-User=$USER
+User=$RUN_USER
 WorkingDirectory=$INSTALL_DIR
 EnvironmentFile=$ENV_FILE
 ExecStart=$EXEC_START
@@ -261,9 +271,35 @@ StandardError=journal
 WantedBy=multi-user.target
 EOF
 
-sudo systemctl daemon-reload
-sudo systemctl enable "$SERVICE_NAME" >/dev/null 2>&1 || true
-sudo systemctl restart "$SERVICE_NAME"
+  $SUDO systemctl daemon-reload
+  $SUDO systemctl enable "$SERVICE_NAME" >/dev/null 2>&1 || true
+  $SUDO systemctl restart "$SERVICE_NAME"
+else
+  tee "$SERVICE_FILE" >/dev/null <<EOF
+[Unit]
+Description=$SERVICE_DESC
+After=network.target
+
+[Service]
+Type=simple
+User=$RUN_USER
+WorkingDirectory=$INSTALL_DIR
+EnvironmentFile=$ENV_FILE
+ExecStart=$EXEC_START
+Restart=always
+RestartSec=5
+KillMode=mixed
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  systemctl daemon-reload
+  systemctl enable "$SERVICE_NAME" >/dev/null 2>&1 || true
+  systemctl restart "$SERVICE_NAME"
+fi
 ok "Service $SERVICE_NAME enabled + started"
 
 # ────────────────────────────────────────────────────────────
@@ -276,7 +312,11 @@ sleep 3
 if systemctl is-active --quiet "$SERVICE_NAME"; then
   ok "systemd: active"
 else
-  err "Service failed to start. Check: sudo journalctl -u $SERVICE_NAME -n 50 --no-pager"
+  if [[ -n "$SUDO" ]]; then
+    err "Service failed to start. Check: sudo journalctl -u $SERVICE_NAME -n 50 --no-pager"
+  else
+    err "Service failed to start. Check: journalctl -u $SERVICE_NAME -n 50 --no-pager"
+  fi
 fi
 
 if [[ "$INSTALL_MODE" == "node" ]]; then
@@ -306,7 +346,11 @@ echo "  Mode:       $INSTALL_MODE"
 echo "  Service:    $SERVICE_NAME (systemctl status $SERVICE_NAME)"
 echo "  Local URL:  http://${ENV_HOST}:${ENV_PORT}"
 echo "  Install:    $INSTALL_DIR"
-echo "  Logs:       sudo journalctl -u $SERVICE_NAME -f"
+if [[ -n "$SUDO" ]]; then
+  echo "  Logs:       sudo journalctl -u $SERVICE_NAME -f"
+else
+  echo "  Logs:       journalctl -u $SERVICE_NAME -f"
+fi
 echo
 c_yellow "  Next steps:"
 if [[ "$INSTALL_MODE" == "node" ]]; then
@@ -329,5 +373,9 @@ else
   echo "  3. Open Telegram → tap VPS menu button → enjoy."
 fi
 echo
-c_dim "  Update later: cd $INSTALL_DIR && git pull && sudo systemctl restart $SERVICE_NAME"
+if [[ -n "$SUDO" ]]; then
+  c_dim "  Update later: cd $INSTALL_DIR && git pull && sudo systemctl restart $SERVICE_NAME"
+else
+  c_dim "  Update later: cd $INSTALL_DIR && git pull && systemctl restart $SERVICE_NAME"
+fi
 echo
