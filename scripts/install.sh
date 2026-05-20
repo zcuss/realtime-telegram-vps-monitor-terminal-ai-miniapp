@@ -44,21 +44,27 @@ err()   { c_red "  ✗ $*"; exit 1; }
 
 ask() {
   local prompt="$1" var_name="$2" default="${3:-}"
-  local value
-  if [[ -n "$default" ]]; then
-    read -rp "  $prompt [$default]: " value
-    value="${value:-$default}"
+  local value=""
+  if [[ -r /dev/tty ]]; then
+    if [[ -n "$default" ]]; then
+      read -rp "  $prompt [$default]: " value </dev/tty || value="$default"
+      value="${value:-$default}"
+    else
+      read -rp "  $prompt: " value </dev/tty || value=""
+    fi
   else
-    read -rp "  $prompt: " value
+    value="$default"
   fi
   printf -v "$var_name" '%s' "$value"
 }
 
 ask_secret() {
   local prompt="$1" var_name="$2"
-  local value
-  read -rsp "  $prompt: " value
-  echo
+  local value=""
+  if [[ -r /dev/tty ]]; then
+    read -rsp "  $prompt: " value </dev/tty || value=""
+    echo
+  fi
   printf -v "$var_name" '%s' "$value"
 }
 
@@ -150,10 +156,9 @@ if [[ -f ".env" ]]; then
 else
   cp .env.example .env
 
-  ask "Service host (bind address)" SVC_HOST "$DEFAULT_HOST"
-  ask "Service port" SVC_PORT "$DEFAULT_PORT"
-
   if [[ "$INSTALL_MODE" == "node" ]]; then
+    SVC_HOST="$DEFAULT_HOST"
+    SVC_PORT="$DEFAULT_PORT"
     NODE_PW=$(random_password)
     upsert_env "NODE_PASSWORD" "$NODE_PW" .env
     upsert_env "NODE_HOST" "$SVC_HOST" .env
@@ -164,6 +169,9 @@ else
     ok ".env written (mode 600)"
     c_dim "    NODE_PASSWORD: $NODE_PW"
   else
+    ask "Service host (bind address)" SVC_HOST "$DEFAULT_HOST"
+    ask "Service port" SVC_PORT "$DEFAULT_PORT"
+
     echo
     c_dim "Telegram bot setup:"
     c_dim "  1. Create a bot via @BotFather → get token"
@@ -312,10 +320,12 @@ echo
 c_yellow "  Next steps:"
 if [[ "$INSTALL_MODE" == "node" ]]; then
   NODE_PW_SHOW=$(grep -E '^NODE_PASSWORD=' "$INSTALL_DIR/.env" | head -1 | cut -d= -f2-)
-  echo "  1. Add this node to Main Panel VPS_TARGETS:"
-  echo "       {\"id\":\"node1\",\"name\":\"Node 1\",\"url\":\"http://THIS_NODE_IP:${ENV_PORT}\",\"password\":\"$NODE_PW_SHOW\"}"
+  NODE_PUBLIC_IP=$(curl -fsS --max-time 3 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}')
+  NODE_URL="http://${NODE_PUBLIC_IP:-THIS_NODE_IP}:${ENV_PORT}"
+  echo "  1. Copy this to Main Panel VPS_TARGETS:"
+  echo "       {\"id\":\"node1\",\"name\":\"Node 1\",\"url\":\"$NODE_URL\",\"password\":\"$NODE_PW_SHOW\"}"
   echo "  2. Test from Main VPS:"
-  echo "       curl -H 'X-Dashboard-Password: $NODE_PW_SHOW' http://THIS_NODE_IP:${ENV_PORT}/api/metrics"
+  echo "       curl -H 'X-Dashboard-Password: $NODE_PW_SHOW' $NODE_URL/api/metrics"
 else
   echo "  1. Expose via HTTPS (Cloudflare Tunnel recommended):"
   echo "       cloudflared tunnel --url http://${ENV_HOST}:${ENV_PORT} --no-autoupdate"
