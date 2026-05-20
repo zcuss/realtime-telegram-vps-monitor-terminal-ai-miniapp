@@ -157,23 +157,35 @@ Main dashboard fetches each node via `GET /api/metrics` with header `X-Dashboard
 
 ## Easy install (one-command)
 
-For Ubuntu/Debian VPS. Run as the user that will own the service (typically `ubuntu` or your shell user — **not** root).
+For Ubuntu/Debian VPS. Run as non-root user.
+
+### Full Panel (Main VPS)
+
+Public repo:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/zcuss/realtime-telegram-vps-monitor-terminal-ai-miniapp/Main/scripts/install.sh | bash
 ```
 
-> If the install script doesn't exist yet (this repo is still bootstrapping), use the **Manual install** below.
+Private repo:
 
-The script will:
+```bash
+git clone https://github.com/zcuss/realtime-telegram-vps-monitor-terminal-ai-miniapp.git && cd realtime-telegram-vps-monitor-terminal-ai-miniapp && bash scripts/install.sh
+```
+
+### Node-only (Remote VPS)
+
+```bash
+git clone https://github.com/zcuss/realtime-telegram-vps-monitor-terminal-ai-miniapp.git && cd realtime-telegram-vps-monitor-terminal-ai-miniapp && python3 -m venv .venv && . .venv/bin/activate && pip install -U pip && pip install -r requirements.txt && cp .env.example .env && sed -i 's/^HOST=.*/HOST=0.0.0.0/' .env && sed -i 's/^PORT=.*/PORT=8788/' .env && echo 'NODE_PASSWORD=change-me-node' >> .env && echo 'NODE_HOST=0.0.0.0' >> .env && echo 'NODE_PORT=8788' >> .env && nohup .venv/bin/python node_agent.py > node-agent.log 2>&1 &
+```
+
+Panel installer does:
 
 1. Clone repo to `~/telegram-vps-monitor-terminal-ai-miniapp/`
 2. Create Python venv + install deps
-3. Copy `.env.example` → `.env` and prompt for required values
-4. Generate a strong random `DASHBOARD_PASSWORD`
-5. Create systemd service `telegram-vps-monitor.service`
-6. Start + enable the service
-7. Print next-step instructions for HTTPS tunnel + Telegram menu button
+3. Copy `.env.example` → `.env` and prompt required values
+4. Create systemd service `telegram-vps-monitor.service`
+5. Start + enable service
 
 ---
 
