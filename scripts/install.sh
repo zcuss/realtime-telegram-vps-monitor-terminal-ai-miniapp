@@ -71,6 +71,15 @@ require_cmd() {
   command -v "$1" >/dev/null 2>&1 || err "Missing required command: $1. Install it and retry."
 }
 
+upsert_env() {
+  local key="$1" value="$2" file="$3"
+  if grep -qE "^${key}=" "$file"; then
+    sed -i "s|^${key}=.*$|${key}=${value}|" "$file"
+  else
+    echo "${key}=${value}" >> "$file"
+  fi
+}
+
 # ────────────────────────────────────────────────────────────
 # Pre-flight
 # ────────────────────────────────────────────────────────────
@@ -86,27 +95,20 @@ else
 fi
 
 require_cmd git
-require_cmd python3
 require_cmd curl
 require_cmd openssl
 
-PYV=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
-PYV_MAJOR=$(echo "$PYV" | cut -d. -f1)
-PYV_MINOR=$(echo "$PYV" | cut -d. -f2)
-if [[ "$PYV_MAJOR" -lt 3 ]] || { [[ "$PYV_MAJOR" -eq 3 ]] && [[ "$PYV_MINOR" -lt 10 ]]; }; then
-  err "Python >= 3.10 required, found $PYV"
-fi
-ok "Python $PYV"
-
-if ! python3 -c 'import venv' 2>/dev/null; then
-  warn "python3-venv missing, installing..."
+if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+  warn "Node.js/npm missing, installing NodeSource 22.x"
   if [[ -n "$SUDO" ]]; then
-    $SUDO apt-get update -qq && $SUDO apt-get install -y python3-venv >/dev/null
+    curl -fsSL https://deb.nodesource.com/setup_22.x | $SUDO -E bash -
+    $SUDO apt-get install -y nodejs build-essential python3 make g++ >/dev/null
   else
-    apt-get update -qq && apt-get install -y python3-venv >/dev/null
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+    apt-get install -y nodejs build-essential python3 make g++ >/dev/null
   fi
 fi
-ok "python3-venv available"
+ok "Node $(node -v), npm $(npm -v)"
 
 if [[ -n "$SUDO" ]] && ! $SUDO -n true 2>/dev/null; then
   warn "sudo will prompt for password during systemd setup"
@@ -131,21 +133,11 @@ fi
 cd "$INSTALL_DIR"
 
 # ────────────────────────────────────────────────────────────
-# Python venv + deps
+# Node deps
 # ────────────────────────────────────────────────────────────
-step "Setting up Python environment"
+step "Installing Node dependencies"
 
-if [[ ! -d ".venv" ]]; then
-  python3 -m venv .venv
-  ok "Created venv"
-fi
-
-# shellcheck disable=SC1091
-source .venv/bin/activate
-pip install --quiet --upgrade pip wheel
-pip install --quiet -r requirements.txt
-# Ensure gunicorn even if requirements.txt forgets it
-pip install --quiet gunicorn
+npm install --omit=dev
 ok "Dependencies installed"
 
 # ────────────────────────────────────────────────────────────
@@ -163,27 +155,11 @@ else
 
   if [[ "$INSTALL_MODE" == "node" ]]; then
     NODE_PW=$(random_password)
-    python3 - <<PY
-import os, re
-path = os.path.join("$INSTALL_DIR", ".env")
-with open(path) as f:
-    content = f.read()
-updates = {
-    "NODE_PASSWORD": "$NODE_PW",
-    "NODE_HOST": "$SVC_HOST",
-    "NODE_PORT": "$SVC_PORT",
-    "HOST": "$SVC_HOST",
-    "PORT": "$SVC_PORT",
-}
-for key, value in updates.items():
-    pattern = re.compile(rf"^{re.escape(key)}=.*$", re.MULTILINE)
-    if pattern.search(content):
-        content = pattern.sub(f"{key}={value}", content)
-    else:
-        content += f"\n{key}={value}\n"
-with open(path, "w") as f:
-    f.write(content)
-PY
+    upsert_env "NODE_PASSWORD" "$NODE_PW" .env
+    upsert_env "NODE_HOST" "$SVC_HOST" .env
+    upsert_env "NODE_PORT" "$SVC_PORT" .env
+    upsert_env "HOST" "$SVC_HOST" .env
+    upsert_env "PORT" "$SVC_PORT" .env
     chmod 600 .env
     ok ".env written (mode 600)"
     c_dim "    NODE_PASSWORD: $NODE_PW"
@@ -199,28 +175,12 @@ PY
 
     DASH_PW=$(random_password)
 
-    python3 - <<PY
-import os, re
-path = os.path.join("$INSTALL_DIR", ".env")
-with open(path) as f:
-    content = f.read()
-updates = {
-    "DASHBOARD_PASSWORD": "$DASH_PW",
-    "ALLOWED_TG_USER_ID": "$TG_USER_ID",
-    "TELEGRAM_BOT_TOKEN": "$TG_TOKEN",
-    "TERMINAL_PASSWORD_FALLBACK": "false",
-    "HOST": "$SVC_HOST",
-    "PORT": "$SVC_PORT",
-}
-for key, value in updates.items():
-    pattern = re.compile(rf"^{re.escape(key)}=.*$", re.MULTILINE)
-    if pattern.search(content):
-        content = pattern.sub(f"{key}={value}", content)
-    else:
-        content += f"\n{key}={value}\n"
-with open(path, "w") as f:
-    f.write(content)
-PY
+    upsert_env "DASHBOARD_PASSWORD" "$DASH_PW" .env
+    upsert_env "ALLOWED_TG_USER_ID" "$TG_USER_ID" .env
+    upsert_env "TELEGRAM_BOT_TOKEN" "$TG_TOKEN" .env
+    upsert_env "TERMINAL_PASSWORD_FALLBACK" "false" .env
+    upsert_env "HOST" "$SVC_HOST" .env
+    upsert_env "PORT" "$SVC_PORT" .env
     chmod 600 .env
     ok ".env written (mode 600)"
     c_dim "    DASHBOARD_PASSWORD: $(printf '%s' "$DASH_PW" | head -c 6)... (saved to .env)"
@@ -233,20 +193,19 @@ fi
 step "Installing systemd service"
 
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
-GUNICORN_BIN="$INSTALL_DIR/.venv/bin/gunicorn"
-PYTHON_BIN="$INSTALL_DIR/.venv/bin/python"
+NPM_BIN="$(command -v npm)"
 ENV_FILE="$INSTALL_DIR/.env"
 
 if [[ "$INSTALL_MODE" == "node" ]]; then
   ENV_PORT=$(grep -E '^NODE_PORT=' "$ENV_FILE" | head -1 | cut -d= -f2 | tr -d '"' || echo "$DEFAULT_PORT")
   ENV_HOST=$(grep -E '^NODE_HOST=' "$ENV_FILE" | head -1 | cut -d= -f2 | tr -d '"' || echo "$DEFAULT_HOST")
-  SERVICE_DESC="VPS Node Agent"
-  EXEC_START="$PYTHON_BIN node_agent.py"
+  SERVICE_DESC="VPS Node Agent Fastify"
+  EXEC_START="$NPM_BIN run start:node"
 else
   ENV_PORT=$(grep -E '^PORT=' "$ENV_FILE" | head -1 | cut -d= -f2 | tr -d '"' || echo "$DEFAULT_PORT")
   ENV_HOST=$(grep -E '^HOST=' "$ENV_FILE" | head -1 | cut -d= -f2 | tr -d '"' || echo "$DEFAULT_HOST")
-  SERVICE_DESC="Telegram VPS Monitor Mini App"
-  EXEC_START="$GUNICORN_BIN -k gthread --threads 8 -b ${ENV_HOST}:${ENV_PORT} app:app"
+  SERVICE_DESC="Telegram VPS Monitor Fastify"
+  EXEC_START="$NPM_BIN run start"
 fi
 
 if [[ -n "$SUDO" ]]; then
