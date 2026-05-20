@@ -62,12 +62,19 @@ Run node-only:
 npm run start:node
 ```
 
+Run Telegram bot helper:
+
+```bash
+npm run start:bot
+```
+
 ## Konfigurasi `.env` minimum panel
 
 ```env
 DASHBOARD_PASSWORD=CHANGE_ME
 ALLOWED_TG_USER_ID=123456789
 TELEGRAM_BOT_TOKEN=YOUR_BOT_TOKEN
+BOT_PUBLIC_URL=https://your-domain.example
 HOST=127.0.0.1
 PORT=8787
 TERMINAL_PASSWORD_FALLBACK=true

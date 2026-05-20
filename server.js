@@ -1,4 +1,5 @@
 import os from 'node:os';
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
@@ -6,9 +7,7 @@ import Fastify from 'fastify';
 import websocket from '@fastify/websocket';
 import formbody from '@fastify/formbody';
 import fastifyStatic from '@fastify/static';
-import fastifyView from '@fastify/view';
 import dotenv from 'dotenv';
-import * as eta from 'eta';
 import axios from 'axios';
 import pty from 'node-pty';
 import si from 'systeminformation';
@@ -21,7 +20,6 @@ const app = Fastify({ logger: true });
 await app.register(websocket);
 await app.register(formbody);
 await app.register(fastifyStatic, { root: path.join(__dirname, 'static'), prefix: '/static/' });
-await app.register(fastifyView, { engine: { eta }, root: path.join(__dirname, 'templates') });
 
 const PASSWORD = process.env.DASHBOARD_PASSWORD || 'change-me';
 const REFRESH = Number(process.env.REFRESH_SECONDS || 5);
@@ -46,6 +44,13 @@ function parseTargets() {
   return out;
 }
 const TARGETS = parseTargets();
+
+async function renderTemplate(name, data = {}) {
+  let html = await fs.readFile(path.join(__dirname, 'templates', name), 'utf8');
+  html = html.replaceAll('<%= it.refresh %>', String(data.refresh ?? ''));
+  html = html.replaceAll('<%= it.auto || "" %>', String(data.auto ?? ''));
+  return html;
+}
 
 function unauthorized(reply) {
   return reply.header('WWW-Authenticate', 'Basic realm="vps-monitor"').code(401).send('Unauthorized');
@@ -119,10 +124,10 @@ async function localMetrics() {
   };
 }
 
-app.get('/', async (_req, reply) => reply.view('index.html', { refresh: REFRESH }));
-app.get('/terminal', async (_req, reply) => reply.view('terminal.html', { auto: '' }));
-app.get('/claude', async (_req, reply) => reply.view('terminal.html', { auto: 'claude' }));
-app.get('/codex', async (_req, reply) => reply.view('terminal.html', { auto: 'codex' }));
+app.get('/', async (_req, reply) => reply.type('text/html').send(await renderTemplate('index.html', { refresh: REFRESH })));
+app.get('/terminal', async (_req, reply) => reply.type('text/html').send(await renderTemplate('terminal.html', { auto: '' })));
+app.get('/claude', async (_req, reply) => reply.type('text/html').send(await renderTemplate('terminal.html', { auto: 'claude' })));
+app.get('/codex', async (_req, reply) => reply.type('text/html').send(await renderTemplate('terminal.html', { auto: 'codex' })));
 
 app.get('/api/vps', async (req, reply) => {
   if (!auth(req, reply)) return unauthorized(reply);
