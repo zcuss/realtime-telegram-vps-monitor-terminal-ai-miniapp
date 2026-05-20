@@ -2,6 +2,8 @@ import os from 'node:os';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import Fastify from 'fastify';
 import websocket from '@fastify/websocket';
@@ -17,6 +19,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = Fastify({ logger: true });
+const execFileAsync = promisify(execFile);
 await app.register(websocket);
 await app.register(formbody);
 await app.register(fastifyStatic, { root: path.join(__dirname, 'static'), prefix: '/static/' });
@@ -136,6 +139,25 @@ function wsAuth(req) {
   return !!TERMINAL_PIN && req.query?.pin === TERMINAL_PIN;
 }
 
+async function topProcesses(procs) {
+  const fromSi = (procs?.list || [])
+    .map(p => ({ pid: String(p.pid), cpu: Number(p.pcpu || p.cpu || 0), mem: Number(p.pmem || p.memRss || 0), cmd: String(p.command || p.name || 'proc') }))
+    .filter(p => p.cpu > 0 || p.mem > 0)
+    .sort((a, b) => b.cpu - a.cpu)
+    .slice(0, 8)
+    .map(p => ({ ...p, cpu: p.cpu.toFixed(1), mem: p.mem.toFixed(1) }));
+  if (fromSi.length) return fromSi;
+  try {
+    const { stdout } = await execFileAsync('ps', ['-eo', 'pid,pcpu,pmem,comm', '--sort=-pcpu'], { timeout: 3000 });
+    return stdout.trim().split('\n').slice(1, 9).map(line => {
+      const [pid, cpu, mem, ...cmd] = line.trim().split(/\s+/);
+      return { pid, cpu, mem, cmd: cmd.join(' ') || 'proc' };
+    });
+  } catch {
+    return [];
+  }
+}
+
 async function localMetrics() {
   const [load, mem, fsSize, cpu, procs] = await Promise.all([
     si.currentLoad(), si.mem(), si.fsSize(), si.cpu(), si.processes()
@@ -148,11 +170,7 @@ async function localMetrics() {
   const dp = +(disk.used / disk.size * 100).toFixed(1);
   const cp = +load.currentLoad.toFixed(1);
   const lpc = +(load1 / cores).toFixed(2);
-  const top = procs.list
-    .filter(p => (p.pcpu || p.pmem || 0) > 0 && !String(p.name || p.command || '').startsWith('kworker'))
-    .sort((a, b) => (b.pcpu || 0) - (a.pcpu || 0))
-    .slice(0, 8)
-    .map(p => ({ pid: String(p.pid), cpu: Number(p.pcpu || 0).toFixed(1), mem: Number(p.pmem || 0).toFixed(1), cmd: p.command || p.name || 'proc' }));
+  const top = await topProcesses(procs);
   return {
     ts: Math.floor(Date.now()/1000), host: os.hostname(), uptime_sec: os.uptime(), uptime: `${Math.floor(os.uptime()/86400)}d ${Math.floor((os.uptime()%86400)/3600)}h ${Math.floor((os.uptime()%3600)/60)}m`,
     health: { level: rp>=90||dp>=90?'danger':(rp>=75||dp>=75||lpc>=1.5?'warn':'ok'), label: rp>=90||dp>=90?'CRITICAL':(rp>=75||dp>=75||lpc>=1.5?'ATTENTION':'HEALTHY'), alerts: [] },
