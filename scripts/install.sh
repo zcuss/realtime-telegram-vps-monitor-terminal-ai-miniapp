@@ -2,6 +2,7 @@
 # Telegram VPS Monitor Mini App — one-command installer
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/zcuss/realtime-telegram-vps-monitor-terminal-ai-miniapp/Main/scripts/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/zcuss/realtime-telegram-vps-monitor-terminal-ai-miniapp/Main/scripts/install.sh | INSTALL_MODE=node bash
 #
 # Run as the user that will own the service (NOT root).
 # Tested on: Ubuntu 22.04 / 24.04, Debian 12
@@ -12,10 +13,20 @@ set -euo pipefail
 # Config
 # ────────────────────────────────────────────────────────────
 REPO_URL="https://github.com/zcuss/realtime-telegram-vps-monitor-terminal-ai-miniapp.git"
+INSTALL_MODE="${INSTALL_MODE:-${1:-panel}}"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/telegram-vps-monitor-terminal-ai-miniapp}"
-SERVICE_NAME="telegram-vps-monitor"
-DEFAULT_PORT="${PORT:-8787}"
-DEFAULT_HOST="${HOST:-127.0.0.1}"
+
+if [[ "$INSTALL_MODE" == "node" || "$INSTALL_MODE" == "node-only" ]]; then
+  INSTALL_MODE="node"
+  SERVICE_NAME="vps-node-agent"
+  DEFAULT_PORT="${NODE_PORT:-8788}"
+  DEFAULT_HOST="${NODE_HOST:-0.0.0.0}"
+else
+  INSTALL_MODE="panel"
+  SERVICE_NAME="telegram-vps-monitor"
+  DEFAULT_PORT="${PORT:-8787}"
+  DEFAULT_HOST="${HOST:-127.0.0.1}"
+fi
 
 # ────────────────────────────────────────────────────────────
 # Helpers
@@ -138,32 +149,20 @@ if [[ -f ".env" ]]; then
 else
   cp .env.example .env
 
-  echo
-  c_dim "Telegram bot setup:"
-  c_dim "  1. Create a bot via @BotFather → get token"
-  c_dim "  2. Message @userinfobot to get your numeric user ID"
-  echo
-
-  ask_secret "Telegram bot token (from @BotFather)" TG_TOKEN
-  ask "Your Telegram numeric user ID" TG_USER_ID
   ask "Service host (bind address)" SVC_HOST "$DEFAULT_HOST"
   ask "Service port" SVC_PORT "$DEFAULT_PORT"
 
-  DASH_PW=$(random_password)
-  TERM_FALLBACK_PW=$(random_password)
-
-  # Write .env safely
-  python3 - <<PY
+  if [[ "$INSTALL_MODE" == "node" ]]; then
+    NODE_PW=$(random_password)
+    python3 - <<PY
 import os, re
 path = os.path.join("$INSTALL_DIR", ".env")
 with open(path) as f:
     content = f.read()
-
 updates = {
-    "DASHBOARD_PASSWORD": "$DASH_PW",
-    "ALLOWED_TG_USER_ID": "$TG_USER_ID",
-    "TELEGRAM_BOT_TOKEN": "$TG_TOKEN",
-    "TERMINAL_PASSWORD_FALLBACK": "$TERM_FALLBACK_PW",
+    "NODE_PASSWORD": "$NODE_PW",
+    "NODE_HOST": "$SVC_HOST",
+    "NODE_PORT": "$SVC_PORT",
     "HOST": "$SVC_HOST",
     "PORT": "$SVC_PORT",
 }
@@ -173,14 +172,50 @@ for key, value in updates.items():
         content = pattern.sub(f"{key}={value}", content)
     else:
         content += f"\n{key}={value}\n"
-
 with open(path, "w") as f:
     f.write(content)
 PY
+    chmod 600 .env
+    ok ".env written (mode 600)"
+    c_dim "    NODE_PASSWORD: $NODE_PW"
+  else
+    echo
+    c_dim "Telegram bot setup:"
+    c_dim "  1. Create a bot via @BotFather → get token"
+    c_dim "  2. Message @userinfobot to get your numeric user ID"
+    echo
 
-  chmod 600 .env
-  ok ".env written (mode 600)"
-  c_dim "    DASHBOARD_PASSWORD: $(printf '%s' "$DASH_PW" | head -c 6)... (saved to .env)"
+    ask_secret "Telegram bot token (from @BotFather)" TG_TOKEN
+    ask "Your Telegram numeric user ID" TG_USER_ID
+
+    DASH_PW=$(random_password)
+
+    python3 - <<PY
+import os, re
+path = os.path.join("$INSTALL_DIR", ".env")
+with open(path) as f:
+    content = f.read()
+updates = {
+    "DASHBOARD_PASSWORD": "$DASH_PW",
+    "ALLOWED_TG_USER_ID": "$TG_USER_ID",
+    "TELEGRAM_BOT_TOKEN": "$TG_TOKEN",
+    "TERMINAL_PASSWORD_FALLBACK": "false",
+    "HOST": "$SVC_HOST",
+    "PORT": "$SVC_PORT",
+}
+for key, value in updates.items():
+    pattern = re.compile(rf"^{re.escape(key)}=.*$", re.MULTILINE)
+    if pattern.search(content):
+        content = pattern.sub(f"{key}={value}", content)
+    else:
+        content += f"\n{key}={value}\n"
+with open(path, "w") as f:
+    f.write(content)
+PY
+    chmod 600 .env
+    ok ".env written (mode 600)"
+    c_dim "    DASHBOARD_PASSWORD: $(printf '%s' "$DASH_PW" | head -c 6)... (saved to .env)"
+  fi
 fi
 
 # ────────────────────────────────────────────────────────────
@@ -190,15 +225,24 @@ step "Installing systemd service"
 
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 GUNICORN_BIN="$INSTALL_DIR/.venv/bin/gunicorn"
+PYTHON_BIN="$INSTALL_DIR/.venv/bin/python"
 ENV_FILE="$INSTALL_DIR/.env"
 
-# Read PORT from .env so service binds to the configured port
-ENV_PORT=$(grep -E '^PORT=' "$ENV_FILE" | head -1 | cut -d= -f2 | tr -d '"' || echo "$DEFAULT_PORT")
-ENV_HOST=$(grep -E '^HOST=' "$ENV_FILE" | head -1 | cut -d= -f2 | tr -d '"' || echo "$DEFAULT_HOST")
+if [[ "$INSTALL_MODE" == "node" ]]; then
+  ENV_PORT=$(grep -E '^NODE_PORT=' "$ENV_FILE" | head -1 | cut -d= -f2 | tr -d '"' || echo "$DEFAULT_PORT")
+  ENV_HOST=$(grep -E '^NODE_HOST=' "$ENV_FILE" | head -1 | cut -d= -f2 | tr -d '"' || echo "$DEFAULT_HOST")
+  SERVICE_DESC="VPS Node Agent"
+  EXEC_START="$PYTHON_BIN node_agent.py"
+else
+  ENV_PORT=$(grep -E '^PORT=' "$ENV_FILE" | head -1 | cut -d= -f2 | tr -d '"' || echo "$DEFAULT_PORT")
+  ENV_HOST=$(grep -E '^HOST=' "$ENV_FILE" | head -1 | cut -d= -f2 | tr -d '"' || echo "$DEFAULT_HOST")
+  SERVICE_DESC="Telegram VPS Monitor Mini App"
+  EXEC_START="$GUNICORN_BIN -k gthread --threads 8 -b ${ENV_HOST}:${ENV_PORT} app:app"
+fi
 
 sudo tee "$SERVICE_FILE" >/dev/null <<EOF
 [Unit]
-Description=Telegram VPS Monitor Mini App
+Description=$SERVICE_DESC
 After=network.target
 
 [Service]
@@ -206,7 +250,7 @@ Type=simple
 User=$USER
 WorkingDirectory=$INSTALL_DIR
 EnvironmentFile=$ENV_FILE
-ExecStart=$GUNICORN_BIN -k gthread --threads 8 -b ${ENV_HOST}:${ENV_PORT} app:app
+ExecStart=$EXEC_START
 Restart=always
 RestartSec=5
 KillMode=mixed
@@ -235,8 +279,16 @@ else
   err "Service failed to start. Check: sudo journalctl -u $SERVICE_NAME -n 50 --no-pager"
 fi
 
-HEALTH_CODE=$(curl -s -o /dev/null -w '%{http_code}' "http://${ENV_HOST}:${ENV_PORT}/" || echo "000")
-if [[ "$HEALTH_CODE" =~ ^(200|401)$ ]]; then
+if [[ "$INSTALL_MODE" == "node" ]]; then
+  HEALTH_URL="http://127.0.0.1:${ENV_PORT}/health"
+  OK_CODES="^(200)$"
+else
+  HEALTH_URL="http://${ENV_HOST}:${ENV_PORT}/"
+  OK_CODES="^(200|401)$"
+fi
+
+HEALTH_CODE=$(curl -s -o /dev/null -w '%{http_code}' "$HEALTH_URL" || echo "000")
+if [[ "$HEALTH_CODE" =~ $OK_CODES ]]; then
   ok "HTTP responsive (code: $HEALTH_CODE)"
 else
   warn "Unexpected HTTP code: $HEALTH_CODE — check service logs"
@@ -250,23 +302,32 @@ c_green "═══════════════════════�
 c_green "  ✓ Installation complete"
 c_green "═══════════════════════════════════════════════════════════"
 echo
+echo "  Mode:       $INSTALL_MODE"
 echo "  Service:    $SERVICE_NAME (systemctl status $SERVICE_NAME)"
 echo "  Local URL:  http://${ENV_HOST}:${ENV_PORT}"
 echo "  Install:    $INSTALL_DIR"
 echo "  Logs:       sudo journalctl -u $SERVICE_NAME -f"
 echo
 c_yellow "  Next steps:"
-echo "  1. Expose via HTTPS (Cloudflare Tunnel recommended):"
-echo "       cloudflared tunnel --url http://${ENV_HOST}:${ENV_PORT} --no-autoupdate"
-echo
-echo "  2. Set Telegram menu button to your HTTPS URL:"
-echo "       BOT_TOKEN=\$(grep TELEGRAM_BOT_TOKEN $INSTALL_DIR/.env | cut -d= -f2)"
-echo "       URL=https://your-domain.example"
-echo "       curl -X POST \"https://api.telegram.org/bot\$BOT_TOKEN/setChatMenuButton\" \\"
-echo "         -H 'Content-Type: application/json' \\"
-echo "         -d '{\"menu_button\":{\"type\":\"web_app\",\"text\":\"VPS\",\"web_app\":{\"url\":\"'\$URL'\"}}}'"
-echo
-echo "  3. Open Telegram → tap VPS menu button → enjoy."
+if [[ "$INSTALL_MODE" == "node" ]]; then
+  NODE_PW_SHOW=$(grep -E '^NODE_PASSWORD=' "$INSTALL_DIR/.env" | head -1 | cut -d= -f2-)
+  echo "  1. Add this node to Main Panel VPS_TARGETS:"
+  echo "       {\"id\":\"node1\",\"name\":\"Node 1\",\"url\":\"http://THIS_NODE_IP:${ENV_PORT}\",\"password\":\"$NODE_PW_SHOW\"}"
+  echo "  2. Test from Main VPS:"
+  echo "       curl -H 'X-Dashboard-Password: $NODE_PW_SHOW' http://THIS_NODE_IP:${ENV_PORT}/api/metrics"
+else
+  echo "  1. Expose via HTTPS (Cloudflare Tunnel recommended):"
+  echo "       cloudflared tunnel --url http://${ENV_HOST}:${ENV_PORT} --no-autoupdate"
+  echo
+  echo "  2. Set Telegram menu button to your HTTPS URL:"
+  echo "       BOT_TOKEN=\$(grep TELEGRAM_BOT_TOKEN $INSTALL_DIR/.env | cut -d= -f2)"
+  echo "       URL=https://your-domain.example"
+  echo "       curl -X POST \"https://api.telegram.org/bot\$BOT_TOKEN/setChatMenuButton\" \\"
+  echo "         -H 'Content-Type: application/json' \\"
+  echo "         -d '{\"menu_button\":{\"type\":\"web_app\",\"text\":\"VPS\",\"web_app\":{\"url\":\"'\$URL'\"}}}'"
+  echo
+  echo "  3. Open Telegram → tap VPS menu button → enjoy."
+fi
 echo
 c_dim "  Update later: cd $INSTALL_DIR && git pull && sudo systemctl restart $SERVICE_NAME"
 echo

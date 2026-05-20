@@ -161,31 +161,41 @@ For Ubuntu/Debian VPS. Run as non-root user.
 
 ### Full Panel (Main VPS)
 
-Public repo:
-
 ```bash
 curl -fsSL https://raw.githubusercontent.com/zcuss/realtime-telegram-vps-monitor-terminal-ai-miniapp/Main/scripts/install.sh | bash
-```
-
-Private repo:
-
-```bash
-git clone https://github.com/zcuss/realtime-telegram-vps-monitor-terminal-ai-miniapp.git && cd realtime-telegram-vps-monitor-terminal-ai-miniapp && bash scripts/install.sh
 ```
 
 ### Node-only (Remote VPS)
 
 ```bash
-git clone https://github.com/zcuss/realtime-telegram-vps-monitor-terminal-ai-miniapp.git && cd realtime-telegram-vps-monitor-terminal-ai-miniapp && python3 -m venv .venv && . .venv/bin/activate && pip install -U pip && pip install -r requirements.txt && cp .env.example .env && sed -i 's/^HOST=.*/HOST=0.0.0.0/' .env && sed -i 's/^PORT=.*/PORT=8788/' .env && echo 'NODE_PASSWORD=change-me-node' >> .env && echo 'NODE_HOST=0.0.0.0' >> .env && echo 'NODE_PORT=8788' >> .env && nohup .venv/bin/python node_agent.py > node-agent.log 2>&1 &
+curl -fsSL https://raw.githubusercontent.com/zcuss/realtime-telegram-vps-monitor-terminal-ai-miniapp/Main/scripts/install.sh | INSTALL_MODE=node bash
 ```
 
-Panel installer does:
+Installer capabilities:
 
-1. Clone repo to `~/telegram-vps-monitor-terminal-ai-miniapp/`
-2. Create Python venv + install deps
-3. Copy `.env.example` → `.env` and prompt required values
-4. Create systemd service `telegram-vps-monitor.service`
+1. Clone/update repo to `~/telegram-vps-monitor-terminal-ai-miniapp/`
+2. Create Python venv + install dependencies
+3. Generate `.env` based on mode (`panel` or `node`)
+4. Create mode-specific systemd service:
+   - panel: `telegram-vps-monitor`
+   - node: `vps-node-agent`
 5. Start + enable service
+
+### Uninstall
+
+Full Panel:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/zcuss/realtime-telegram-vps-monitor-terminal-ai-miniapp/Main/scripts/uninstall.sh | bash
+```
+
+Node-only:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/zcuss/realtime-telegram-vps-monitor-terminal-ai-miniapp/Main/scripts/uninstall.sh | bash -s -- node
+```
+
+Keep install directory (skip delete prompt) by answering `N`.
 
 ---
 
