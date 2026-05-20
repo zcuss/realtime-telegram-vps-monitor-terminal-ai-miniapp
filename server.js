@@ -27,8 +27,10 @@ const HOST = process.env.HOST || '127.0.0.1';
 const PORT = Number(process.env.PORT || 8787);
 const TG_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const ALLOWED_TG_USER_ID = String(process.env.ALLOWED_TG_USER_ID || '');
+const BOT_PUBLIC_URL = process.env.BOT_PUBLIC_URL || process.env.PUBLIC_URL || '';
 const TERMINAL_PIN = process.env.TERMINAL_PIN || '';
 const TERMINAL_PASSWORD_FALLBACK = String(process.env.TERMINAL_PASSWORD_FALLBACK || 'false').toLowerCase() === 'true';
+const terminalSessions = new Set();
 
 function parseTargets() {
   const out = [{ id: 'local', name: process.env.VPS_LOCAL_NAME || 'Local VPS', type: 'local' }];
@@ -50,6 +52,25 @@ async function renderTemplate(name, data = {}) {
   html = html.replaceAll('<%= it.refresh %>', String(data.refresh ?? ''));
   html = html.replaceAll('<%= it.auto || "" %>', String(data.auto ?? ''));
   return html;
+}
+
+async function telegram(method, body) {
+  if (!TG_TOKEN) return null;
+  const res = await fetch(`https://api.telegram.org/bot${TG_TOKEN}/${method}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!data.ok) throw new Error(`${method}: ${JSON.stringify(data)}`);
+  return data.result;
+}
+
+async function setupTelegramMiniApp() {
+  if (!TG_TOKEN || !BOT_PUBLIC_URL) return;
+  await telegram('setMyCommands', { commands: [{ command: 'start', description: 'Open VPS dashboard' }] });
+  await telegram('setChatMenuButton', { menu_button: { type: 'web_app', text: 'VPS', web_app: { url: BOT_PUBLIC_URL } } });
+  app.log.info(`Telegram Mini App menu set to ${BOT_PUBLIC_URL}`);
 }
 
 function unauthorized(reply) {
@@ -155,6 +176,12 @@ app.post('/login', async (req, reply) => {
   return 'OK';
 });
 
+app.get('/api/telegram/setup', async (req, reply) => {
+  if (!auth(req)) return unauthorized(reply);
+  await setupTelegramMiniApp();
+  return { ok: true, url: BOT_PUBLIC_URL || null };
+});
+
 app.get('/ws/terminal', { websocket: true }, (socket, req) => {
   if (!wsAuth(req)) {
     socket.send('\r\nUnauthorized\r\n');
@@ -164,8 +191,10 @@ app.get('/ws/terminal', { websocket: true }, (socket, req) => {
   const cmd = req.query?.cmd;
   const argv = cmd === 'claude' ? ['claude'] : cmd === 'codex' ? ['codex'] : ['/bin/bash', '-l'];
   const shell = pty.spawn(argv[0], argv.slice(1), { name: 'xterm-256color', cols: 120, rows: 40, cwd: process.env.HOME || '/tmp', env: process.env });
+  terminalSessions.add(shell);
   socket.send('Connected\r\n');
   shell.onData(d => socket.send(d));
+  shell.onExit(() => terminalSessions.delete(shell));
   socket.on('message', msg => {
     const s = msg.toString();
     if (s.startsWith('__resize__:')) {
@@ -175,7 +204,23 @@ app.get('/ws/terminal', { websocket: true }, (socket, req) => {
     }
     shell.write(s);
   });
-  socket.on('close', () => shell.kill());
+  socket.on('close', () => {
+    terminalSessions.delete(shell);
+    shell.kill();
+  });
 });
 
-app.listen({ host: HOST, port: PORT });
+async function shutdown(signal) {
+  app.log.info(`${signal} received, shutting down`);
+  for (const shell of terminalSessions) {
+    try { shell.kill(); } catch {}
+  }
+  await app.close();
+  process.exit(0);
+}
+
+process.once('SIGINT', () => shutdown('SIGINT'));
+process.once('SIGTERM', () => shutdown('SIGTERM'));
+
+await setupTelegramMiniApp().catch(err => app.log.warn(err.message));
+await app.listen({ host: HOST, port: PORT });
