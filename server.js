@@ -25,10 +25,10 @@ const PASSWORD = process.env.DASHBOARD_PASSWORD || 'change-me';
 const REFRESH = Number(process.env.REFRESH_SECONDS || 5);
 const HOST = process.env.HOST || '127.0.0.1';
 const PORT = Number(process.env.PORT || 8787);
-const TG_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
-const ALLOWED_TG_USER_ID = String(process.env.ALLOWED_TG_USER_ID || '');
-const BOT_PUBLIC_URL = process.env.BOT_PUBLIC_URL || process.env.PUBLIC_URL || '';
-const TERMINAL_PIN = process.env.TERMINAL_PIN || '';
+const TG_TOKEN = String(process.env.TELEGRAM_BOT_TOKEN || '').trim();
+const ALLOWED_TG_USER_ID = String(process.env.ALLOWED_TG_USER_ID || '').trim();
+const BOT_PUBLIC_URL = String(process.env.BOT_PUBLIC_URL || process.env.PUBLIC_URL || '').trim();
+const TERMINAL_PIN = String(process.env.TERMINAL_PIN || '').trim();
 const TERMINAL_PASSWORD_FALLBACK = String(process.env.TERMINAL_PASSWORD_FALLBACK || 'false').toLowerCase() === 'true';
 const terminalSessions = new Set();
 
@@ -62,12 +62,23 @@ async function telegram(method, body) {
     body: JSON.stringify(body),
   });
   const data = await res.json();
-  if (!data.ok) throw new Error(`${method}: ${JSON.stringify(data)}`);
+  if (!data.ok) {
+    const hint = data.error_code === 404 ? 'TELEGRAM_BOT_TOKEN salah/tidak lengkap. Ambil ulang dari @BotFather.' : data.description;
+    throw new Error(`${method}: ${hint}`);
+  }
   return data.result;
 }
 
 async function setupTelegramMiniApp() {
-  if (!TG_TOKEN || !BOT_PUBLIC_URL) return;
+  if (!TG_TOKEN) {
+    app.log.warn('TELEGRAM_BOT_TOKEN kosong, skip Telegram Mini App setup');
+    return;
+  }
+  if (!BOT_PUBLIC_URL) {
+    app.log.warn('BOT_PUBLIC_URL/PUBLIC_URL kosong, skip Telegram Mini App setup');
+    return;
+  }
+  app.log.info(`Setting Telegram Mini App menu to ${BOT_PUBLIC_URL}`);
   await telegram('setMyCommands', { commands: [{ command: 'start', description: 'Open VPS dashboard' }] });
   await telegram('setChatMenuButton', { menu_button: { type: 'web_app', text: 'VPS', web_app: { url: BOT_PUBLIC_URL } } });
   app.log.info(`Telegram Mini App menu set to ${BOT_PUBLIC_URL}`);

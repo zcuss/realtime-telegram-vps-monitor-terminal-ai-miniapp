@@ -2,9 +2,9 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
-const URL = process.env.BOT_PUBLIC_URL || process.env.PUBLIC_URL || '';
-const ALLOWED = String(process.env.ALLOWED_TG_USER_ID || '');
+const TOKEN = String(process.env.TELEGRAM_BOT_TOKEN || '').trim();
+const URL = String(process.env.BOT_PUBLIC_URL || process.env.PUBLIC_URL || '').trim();
+const ALLOWED = String(process.env.ALLOWED_TG_USER_ID || '').trim();
 const API = `https://api.telegram.org/bot${TOKEN}`;
 
 if (!TOKEN) {
