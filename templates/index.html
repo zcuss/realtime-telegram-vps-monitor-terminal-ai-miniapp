@@ -71,6 +71,12 @@
       <div id="diskBarBox" class="bar"><i id="diskBar"></i></div>
       <p id="diskd" class="sub">-</p>
     </div>
+    <div class="card">
+      <h3>Swap</h3>
+      <div id="swap" class="value skel">--%</div>
+      <div id="swapBarBox" class="bar"><i id="swapBar"></i></div>
+      <p id="swapd" class="sub">-</p>
+    </div>
   </section>
 
   <div class="termBtns">
@@ -194,6 +200,11 @@ async function load(){
     $('disk').textContent=m.disk.pct+'%';unskel($('disk'));
     $('diskd').textContent=`${m.disk.used_gb} GB used • ${m.disk.free_gb} GB free`;
     bar('disk',m.disk.pct,m.disk.level);
+
+    const sw=m.swap||{pct:0,total_gb:0,used_gb:0,free_gb:0};
+    $('swap').textContent=sw.total_gb?sw.pct+'%':'OFF';unskel($('swap'));
+    $('swapd').textContent=sw.total_gb?`${sw.used_gb} GB used • ${sw.free_gb} GB free`:'no swap';
+    bar('swap',sw.pct,sw.pct>=90?'danger':sw.pct>=70?'warn':'');
 
     $('alerts').className='alerts '+(m.health.alerts.length?'show':'');
     $('alerts').textContent=m.health.alerts.join(' • ');

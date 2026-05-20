@@ -140,22 +140,20 @@ function wsAuth(req) {
 }
 
 async function topProcesses(procs) {
-  const fromSi = (procs?.list || [])
+  try {
+    const { stdout } = await execFileAsync('ps', ['-eo', 'pid,pcpu,pmem,comm', '--sort=-pcpu'], { timeout: 3000, maxBuffer: 1024 * 1024 });
+    const rows = stdout.trim().split('\n').slice(1, 9).map(line => {
+      const [pid, cpu, mem, ...cmd] = line.trim().split(/\s+/);
+      return { pid, cpu: Number(cpu || 0).toFixed(1), mem: Number(mem || 0).toFixed(1), cmd: (cmd.join(' ') || 'proc').slice(0, 80) };
+    });
+    if (rows.length) return rows;
+  } catch {}
+  return (procs?.list || [])
     .map(p => ({ pid: String(p.pid), cpu: Number(p.pcpu || p.cpu || 0), mem: Number(p.pmem || 0), cmd: String(p.command || p.name || 'proc') }))
     .filter(p => p.cpu > 0 || p.mem > 0)
     .sort((a, b) => b.cpu - a.cpu)
     .slice(0, 8)
     .map(p => ({ ...p, cpu: p.cpu.toFixed(1), mem: p.mem.toFixed(1) }));
-  if (fromSi.length) return fromSi;
-  try {
-    const { stdout } = await execFileAsync('ps', ['-eo', 'pid,pcpu,pmem,args', '--sort=-pcpu'], { timeout: 3000, maxBuffer: 1024 * 1024 });
-    return stdout.trim().split('\n').slice(1, 9).map(line => {
-      const [pid, cpu, mem, ...cmd] = line.trim().split(/\s+/);
-      return { pid, cpu: Number(cpu || 0).toFixed(1), mem: Number(mem || 0).toFixed(1), cmd: (cmd.join(' ') || 'proc').slice(0, 80) };
-    });
-  } catch {
-    return [];
-  }
 }
 
 async function serviceStatus() {
@@ -190,6 +188,7 @@ async function localMetrics() {
     health: { level: rp>=90||dp>=90?'danger':(rp>=75||dp>=75||lpc>=1.5?'warn':'ok'), label: rp>=90||dp>=90?'CRITICAL':(rp>=75||dp>=75||lpc>=1.5?'ATTENTION':'HEALTHY'), alerts: [] },
     cpu: { pct: cp, cores, load1: +load1.toFixed(2), load5: +load5.toFixed(2), load15: +load15.toFixed(2), load_per_core: lpc },
     ram: { total_gb: +(mem.total/1e9).toFixed(2), used_gb: +(usedMem/1e9).toFixed(2), avail_gb: +(mem.available/1e9).toFixed(2), pct: rp },
+    swap: { total_gb: +(mem.swaptotal/1e9).toFixed(2), used_gb: +(mem.swapused/1e9).toFixed(2), free_gb: +(mem.swapfree/1e9).toFixed(2), pct: mem.swaptotal ? +(mem.swapused/mem.swaptotal*100).toFixed(1) : 0 },
     disk: { total_gb: +(disk.size/1e9).toFixed(2), used_gb: +(disk.used/1e9).toFixed(2), free_gb: +(disk.available/1e9).toFixed(2), pct: dp },
     top, services
   };
