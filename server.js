@@ -298,6 +298,11 @@ app.get('/', async (_req, reply) => reply.type('text/html').send(await renderTem
 app.get('/terminal', async (_req, reply) => reply.type('text/html').send(await renderTemplate('terminal.html', { auto: '' })));
 app.get('/claude', async (_req, reply) => reply.type('text/html').send(await renderTemplate('terminal.html', { auto: 'claude' })));
 app.get('/codex', async (_req, reply) => reply.type('text/html').send(await renderTemplate('terminal.html', { auto: 'codex' })));
+app.get('/:vpsId', async (req, reply) => {
+  const id = String(req.params?.vpsId || '');
+  if (!TARGETS.some(t => t.id === id)) return reply.callNotFound();
+  return reply.type('text/html').send(await renderTemplate('index.html', { refresh: REFRESH }));
+});
 
 app.get('/api/vps', async (req, reply) => {
   if (!auth(req, reply)) return unauthorized(reply);

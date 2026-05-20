@@ -107,7 +107,7 @@
 const REFRESH=<%= it.refresh %>;
 const $=id=>document.getElementById(id);
 let HOST_RAW='',HOST_MASKED=true;
-let CURRENT_VPS='local';
+let CURRENT_VPS=decodeURIComponent(location.pathname.replace(/^\//,'')||'local');
 let VPS_LIST=[];
 
 let TELEGRAM_INIT_DATA = '';
@@ -232,9 +232,16 @@ const vpsSelect = $('vpsSelect');
 if(vpsSelect){
   vpsSelect.addEventListener('change', ()=>{
     CURRENT_VPS = vpsSelect.value || 'local';
+    const nextPath = CURRENT_VPS === 'local' ? '/' : `/${encodeURIComponent(CURRENT_VPS)}`;
+    if(location.pathname !== nextPath) history.pushState(null, '', nextPath);
     load();
   });
 }
+window.addEventListener('popstate', ()=>{
+  CURRENT_VPS=decodeURIComponent(location.pathname.replace(/^\//,'')||'local');
+  renderVpsSelect();
+  load();
+});
 
 (async ()=>{
   await loadVpsList();
