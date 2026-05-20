@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node server.js",
+    "start": "node start.js",
+    "start:panel": "node server.js",
     "start:node": "node node_agent.js",
     "start:bot": "node bot.js"
   },
