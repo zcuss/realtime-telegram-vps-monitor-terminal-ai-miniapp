@@ -193,19 +193,19 @@ fi
 step "Installing systemd service"
 
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
-NPM_BIN="$(command -v npm)"
+NODE_BIN="$(command -v node)"
 ENV_FILE="$INSTALL_DIR/.env"
 
 if [[ "$INSTALL_MODE" == "node" ]]; then
   ENV_PORT=$(grep -E '^NODE_PORT=' "$ENV_FILE" | head -1 | cut -d= -f2 | tr -d '"' || echo "$DEFAULT_PORT")
   ENV_HOST=$(grep -E '^NODE_HOST=' "$ENV_FILE" | head -1 | cut -d= -f2 | tr -d '"' || echo "$DEFAULT_HOST")
   SERVICE_DESC="VPS Node Agent Fastify"
-  EXEC_START="$NPM_BIN run start:node"
+  EXEC_START="$NODE_BIN node_agent.js"
 else
   ENV_PORT=$(grep -E '^PORT=' "$ENV_FILE" | head -1 | cut -d= -f2 | tr -d '"' || echo "$DEFAULT_PORT")
   ENV_HOST=$(grep -E '^HOST=' "$ENV_FILE" | head -1 | cut -d= -f2 | tr -d '"' || echo "$DEFAULT_HOST")
   SERVICE_DESC="Telegram VPS Monitor Fastify"
-  EXEC_START="$NPM_BIN run start"
+  EXEC_START="$NODE_BIN start.js"
 fi
 
 if [[ -n "$SUDO" ]]; then
@@ -218,7 +218,6 @@ After=network.target
 Type=simple
 User=$RUN_USER
 WorkingDirectory=$INSTALL_DIR
-EnvironmentFile=$ENV_FILE
 ExecStart=$EXEC_START
 Restart=always
 RestartSec=5
@@ -243,7 +242,6 @@ After=network.target
 Type=simple
 User=$RUN_USER
 WorkingDirectory=$INSTALL_DIR
-EnvironmentFile=$ENV_FILE
 ExecStart=$EXEC_START
 Restart=always
 RestartSec=5
