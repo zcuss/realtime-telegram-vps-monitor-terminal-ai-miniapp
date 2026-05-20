@@ -389,7 +389,7 @@ Update my Telegram VPS Monitor Mini App safely.
 Tasks:
 1. cd to ~/telegram-vps-monitor-terminal-ai-miniapp.
 2. git status and show me local changes before overwriting anything.
-3. git pull origin main.
+3. git pull origin Main.
 4. Preserve .env.
 5. Reinstall requirements if changed.
 6. Restart the systemd service.
@@ -439,7 +439,7 @@ Tasks:
 
 ### Terminal opens but shows `Unauthorized`
 
-- This was a bug pre-v2026-05 — pull latest `main` and restart
+- This was a bug pre-v2026-05 — pull latest `Main` and restart
 - Verify `app.py` line 58 includes `or request.args.get('tg','')` in `auth_ok()`
 
 ### Mini App won't load on Telegram
