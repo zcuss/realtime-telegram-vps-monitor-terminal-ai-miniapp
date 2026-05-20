@@ -57,14 +57,50 @@ This app puts that whole workflow behind a single Telegram Mini App button.
 
 Recommended architecture:
 
-- **Main VPS**: run full dashboard (`app.py`)
-- **Node VPS**: run lightweight metrics agent (`node_agent.py`)
+- **Main VPS**: install and run full dashboard (`app.py`)
+- **Node VPS**: install and run lightweight metrics agent (`node_agent.py`)
 
-Main VPS `.env` example (single line JSON):
+### Install Main Panel (full dashboard)
+
+```bash
+git clone https://github.com/zcuss/realtime-telegram-vps-monitor-terminal-ai-miniapp.git
+cd realtime-telegram-vps-monitor-terminal-ai-miniapp
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -U pip
+pip install -r requirements.txt
+```
+
+Main VPS `.env` minimum:
 
 ```env
+DASHBOARD_PASSWORD=CHANGE_ME_PANEL_PASSWORD
+HOST=127.0.0.1
+PORT=8787
+REFRESH_SECONDS=5
+ALLOWED_TG_USER_ID=123456789
+TELEGRAM_BOT_TOKEN=YOUR_BOT_TOKEN
+TERMINAL_PIN=1234
+TERMINAL_PASSWORD_FALLBACK=false
 VPS_LOCAL_NAME=Main VPS
 VPS_TARGETS=[{"id":"node1","name":"Node 1","url":"http://IP_NODE_1:8788","password":"nodepass1"},{"id":"node2","name":"Node 2","url":"http://IP_NODE_2:8788","password":"nodepass2"}]
+```
+
+Run panel:
+
+```bash
+python app.py
+```
+
+### Install Node-only (remote VPS)
+
+```bash
+git clone https://github.com/zcuss/realtime-telegram-vps-monitor-terminal-ai-miniapp.git
+cd realtime-telegram-vps-monitor-terminal-ai-miniapp
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -U pip
+pip install -r requirements.txt
 ```
 
 Node VPS `.env` minimum:
@@ -76,12 +112,20 @@ NODE_PORT=8788
 ALERT_RAM_PCT=85
 ALERT_DISK_PCT=85
 ALERT_LOAD_PER_CORE=2.0
+# Optional checks:
+# NODE_SERVICE_CHECKS=[{"name":"Nginx","cmd":"systemctl is-active --quiet nginx"}]
 ```
 
-Run node agent on remote VPS:
+Run node agent:
 
 ```bash
 python node_agent.py
+```
+
+### Connectivity test (from Main VPS)
+
+```bash
+curl -H "X-Dashboard-Password: nodepass1" http://IP_NODE_1:8788/api/metrics
 ```
 
 Main dashboard fetches each node via `GET /api/metrics` with header `X-Dashboard-Password`.
